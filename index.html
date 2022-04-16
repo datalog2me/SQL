@@ -16,3 +16,70 @@ GROUP BY
 ORDER BY
   2 DESC
 LIMIT 3
+
+
+
+
+
+ [sales]と[customers]テーブルから、
+女性客に販売した商品点数（quantity）の合計（sum_qty）を求めて。
+結果テーブルのカラムは[sum_qty]として。
+
+WITH master AS (
+  SELECT
+    *
+  FROM
+    sample.sales
+    LEFT JOIN sample.customers
+    USING
+      (user_id)
+)
+SELECT
+  SUM(quantity) AS sum_qty
+FROM
+  master
+WHERE
+  gender = 2
+
+
+
+
+
+
+ [customers]テーブルから、
+2019年12月31日時点での年齢（age）ごとに顧客数（users）を求めて。
+結果テーブルは男性に絞り込み、
+顧客が多い順にトップ3を表示して。
+
+WITH master AS (
+  SELECT
+    user_id
+    , DATE_DIFF("2019-12-31", birthday, YEAR) AS age
+  FROM
+    sample.customers
+  WHERE
+    birthday IS NOT NULL
+  AND gender = 1
+)
+SELECT
+  age
+  , COUNT(DISTINCT user_id) AS users
+FROM
+  master
+GROUP BY
+  age
+ORDER BY
+  2 DESC
+LIMIT 3
+
+
+
+
+
+
+
+
+
+
+
+
