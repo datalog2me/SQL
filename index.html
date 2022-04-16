@@ -1,4 +1,6 @@
- [sales]と[customers]テーブルから、
+以下のことをSQLで実際に実行した経験があります。
+
+[sales]と[customers]テーブルから、
 顧客別に販売した金額（revenue）の合計を求め、
 結果テーブルは、顧客の氏名（name）と販売金額の合計（sum_rev）の2カラムとし、
 [sum_rev]の大きい順に3名の顧客に絞り込んで。
@@ -71,6 +73,88 @@ GROUP BY
 ORDER BY
   2 DESC
 LIMIT 3
+
+
+
+
+
+
+[web_log]テープルから、曜日ごとのページビュー数を求めて。
+結果テープルは、曜日（day_of_week）とページビュー数（sum_pv）の2カラムとして。
+並べ替えは、日曜日（Sunday）から土曜日（Saturday）の順にして表示して。
+
+WITH master AS (
+  SELECT
+    *
+    , FORMAT_DATETIME("%u", date_time) AS day_number
+    , FORMAT_DATETIME("%A", date_time) AS day_of_week
+  FROM
+    sample.web_log
+)
+SELECT
+  day_of_week
+  , COUNT(*) AS sum_pv
+FROM
+  master
+GROUP BY
+  day_of_week
+ORDER BY
+  MOD(MAX(cast(day_number AS int64)), 7)
+
+
+
+
+
+
+ [web_log]テーブルから、
+ページ（page）別のページビュー数を取得し、
+ページピュー数の多い順に、トップ5のページ（page）を表示して。
+バラメータ「？sys = abc123」が付いているページと、付いていないページは区別して集計。
+結果テーブルは[page]と[pageviews]の2カラムとして。
+
+SELECT page, COUNT(*) AS pageviews
+FROM
+  sample.web_log
+GROUP BY
+  page
+ORDER BY
+  2 DESC
+LIMIT 5
+
+
+
+
+
+ [web_log]テーブルに記録された「/ prod / prod_id_8 /」のベージビュー数を求めて。
+クエリバラメータ「？sys = abc123」の有無にかかわらずカウント。
+結果テーブルのカラム名は[pageviews_8]として。
+
+SELECT
+  COUNT(*) AS pageviews_8
+FROM
+  sample.web_log
+WHERE
+  SUBSTR(page, 1, 16) = "/prod/prod_id_8/"
+
+
+
+
+
+[web_log]テーブルで、1日の時間を「00」から「23」までに分けたとき、ページビュー数の多い順にトップ3を求めて。
+結果テーブルは、時間（hour）とページビュー数（pageviews）の2カラムとして。
+
+
+SELECT
+  FORMAT_DATETIME("%H", date_time) AS hour
+  , COUNT(*) AS pageviews
+FROM
+  sample.web_log
+GROUP BY
+  hour
+ORDER BY
+  2 DESC
+LIMIT 3
+
 
 
 
