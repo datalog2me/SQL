@@ -161,6 +161,72 @@ LIMIT 3
 
 
 
+ [customers]テーブルで、
+都道府県別のプレミアム顧客数を調べて。
+結果テーブルは、都道府県（prefecture）とプレミアム顧客数（premium_users）の2カラムとして。
+結果テーブルはプレミアム顧客数の多い順に3レコードに絞り込んで表示して。
+
+
+SELECT
+  prefecture
+  , COUNT(DISTINCT user_id) AS premium_users
+FROM
+  sample.customers
+WHERE
+  is_premium IS TRUE
+GROUP BY
+  prefecture
+ORDER BY
+  2 DESC
+LIMIT 3
+
+
+
+
+
+ [web_log]テーブルから、1週間を曜日（Monday〜Sunday）と時間（00〜23）で分けたときのページビュー（pageviews）を求めて。
+結果テーブルは、曜日（day_ of_week）、時間（hour）、ページビュー数（pageviews）の3カラムとして。
+ページビュー数の合計が「60」以上の曜日と時間の組み合わせに絞り込んで表示して。
+
+
+SELECT
+  FORMAT_DATETIME("%A", date_time) AS day_of_week
+  , FORMAT_DATETIME("%H", date_time) AS hour
+  , COUNT(*) AS pageviews
+FROM
+  sample.web_log
+GROUP BY
+  day_of_week
+  , hour
+HAVING pageviews >= 60
+ORDER BY
+  3 DESC
+
+
+
+
+
+ [customers]テーブルで、[一都三県]、[一都三県以外]を値に持つ[pref_category]ごとに年齢のばらつきを知りたい。
+[pref_category]ごとに年齢（age）の平均（ave_age）と標準偏差（stddev_age）を求めて。
+年齢は2019年12月31日時点での満年齢とし、データはサンプルではなく全数として扱う。
+結果テーブルは[pref_ category] [ave_age] [stddev_age]の3カラムとして。
+
+
+SELECT
+  CASE
+    WHEN prefecture IN("東京", "千葉", "埼玉", "神奈川") THEN "一都三県"
+    ELSE "一都三県以外"
+  END AS pref_category
+  , AVG(DATE_DIFF("2019-12-31", birthday, YEAR)) AS avg_age
+  , STDDEV_POP(DATE_DIFF("2019-12-31", birthday, YEAR)) AS stddev_age
+FROM
+  sample.customers
+GROUP BY
+  pref_category
+
+
+
+
 
 
 
