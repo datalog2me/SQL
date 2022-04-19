@@ -229,6 +229,440 @@ GROUP BY
 
 
 
+ユーザーデータ分析
+
+ユーザーデータ分析をやってみた。毛利
+
+title: "Ch5 ユーザーを把握するためのデータ抽出"
+output: 
+    html_document:
+        toc: true
+        toc_float: true
+        highlight: tango
+        theme: flatly
+        css: mycss.css
+        code_folding: show
+        include:
+            - in_header: in_head.html
+        df_print: "paged"
+        number_section: true
+  
+---
+
+
+# コネクションの設定
+
+```{r setup, message=FALSE}
+## load libs
+libs <- c( "DBI", "RPostgreSQL",  "purrr", "dplyr", "yaml" )
+for( lib in libs ) {
+    library( lib, character.only=TRUE )  
+} 
+## connection db
+config <-
+  read_yaml("config.yaml") %>%
+  update_list( drv =  ~  dbDriver(drv))
+con <- lift(dbConnect)(config)
+knitr::opts_chunk$set(connection = "con")
+```
+
+
+# ユーザー全体の特徴・傾向を見つける
+
+## サンプルデータ
+
+```{sql}
+select
+    *
+from
+    mst_users
+;
+```
+
+
+## ユーザーのアクション数を集計する
+`サービス内`の機能をどの程度利用しているのかを
+把握することで, userのふるまいを把握する. 
+
+
+### アクションに関する指標を集計する
+
+ある機能がある期間にどの程度使われたかを集計する.
+計算方針としてはユニークユーザー全体に対して, ある機能を使ったユニークユーザーが
+何%であるかを計算. 
+
+
+
+#### アクション数と割合を計算するクエリ
+```{sql}
+with
+stats as (
+    select 
+        count (distinct session) as total_uu
+    from
+        action_log
+)
+select
+    l.action
+    , count(distinct l.session) as action_uu
+    , count(1) as action_count
+    , s.total_uu
+    , 100. * count(distinct l.session) / s.total_uu as usage_rate
+    , 1. * count(1) / count(distinct l.session) as count_per_user
+from
+    action_log as l
+cross join
+    stats as s
+group by
+    l.action , s.total_uu
+;
+```
+
+
+
+### ログインユーザーと非ログインユーザーを分けて集計する
+
+
+非会員向けのサービスがある場合にはログインユーザーと, 
+非ログインユーザーの間で挙動が異なる. 
+
+#### ログイン状態を判別するクエリ
+
+```{sql}
+with
+action_log_with_status as (
+    select
+        session
+        , user_id
+        , action
+        , case when coalesce(user_id, '') <> '' then 'login' else 'guest' end
+          as login_status
+    from
+        action_log
+)
+select * 
+from
+    action_log_with_status
+;
+```
+
+
+rollupで小計付きのgroup byが可能であることを思い出そう. 小計の部分の属性水準は
+NULLになるのでcoalesceを使うことを忘れにしよう. 
+
+#### ログイン状態によるアクション数の集計クエリ
+
+
+```{sql}
+with 
+action_log_with_status as (
+    select
+        session
+        , user_id
+        , action
+        , case when coalesce(user_id, '') <> '' then 'login' else 'guest' end
+          as login_status
+    from
+        action_log    
+)
+select
+    coalesce(action, 'all') as action
+    , coalesce(login_status, 'all') as login_status
+    , count(distinct session) as action_uu
+    , count(1) as action_count
+from
+    action_log_with_status
+group by
+    rollup(action, login_status)
+order by
+    action_uu
+;
+```
+
+
+
+### 会員と非会員を分けて集計する
+
+
+```{sql}
+with
+action_log_with_status as (
+    select
+        session
+        , user_id
+        , action
+        , case 
+            when
+                coalesce(max(user_id)
+                    over(partition by session order by stamp
+                    rows between unbounded preceding and current row)
+                    , '') <> ''
+                then 'member'
+            else 'none'
+         end as member_status
+        , stamp
+    from
+        action_log
+)
+select
+    *
+from
+    action_log_with_status
+;
+```
+
+
+
+## 年齢別区分を集計する
+
+会員情報を保持するサービスではユーザーがどのような属性を持っているか, 
+想定したユーザーと異なるのかなどを確認する必要がある. 
+そのためにはユーザーの属性を定義する必要がある. 
+ここでは性別と年齢を考える.
+
+次のクエリでは生年月日を整数で保持している. 
+年齢を知るだけならこれで充分. 
+
+#### ユーザーの年齢を計算するクエリ
+
+```{sql}
+with
+mst_users_with_int_birth_date as (
+    select 
+        *
+        , 20170101 as int_specific_date
+        , cast(replace(substring(birth_date, 1, 10), '-', '') as integer ) as int_birth_date
+    from
+        mst_users
+)
+, mst_users_with_age as (
+    select
+        *
+        , floor((int_specific_date - int_birth_date) / 10000 ) as age
+    from
+        mst_users_with_int_birth_date
+)
+select
+    user_id, sex, birth_date, age
+from    
+    mst_users_with_age
+;
+```
+
+
+次のステップとしてカテゴリー分けをする.
+
+#### 性別と年齢から年齢区分を計算すうクエリ
+
+
+
+
+
+```{sql}
+with
+mst_users_with_int_birth_date as (
+    select 
+        *
+        , 20170101 as int_specific_date
+        , cast(replace(substring(birth_date, 1, 10), '-', '') as integer ) as int_birth_date
+    from
+        mst_users
+)
+, mst_users_with_age as (
+    select
+        *
+        , floor((int_specific_date - int_birth_date) / 10000 ) as age
+    from
+        mst_users_with_int_birth_date
+)
+, mst_users_with_category as (
+    select
+        user_id
+        , sex
+        , age
+        , concat(
+            case
+                when 20 <= age then sex
+                else ''
+            end
+            , case
+                when age between 4 and 12 then 'C'
+                when age between 13 and 19 then 'T'
+                when age between 20 and 34 then '1'
+                when age between 35 and 49 then '2'
+                when age >= 50 then '3'
+              end
+        ) as category
+    from
+        mst_users_with_age
+)
+select 
+    category 
+    , count( category ) as user_count
+from
+    mst_users_with_category
+group by
+    category
+;
+```
+
+## 年齢別区分ごとの特徴を抽出
+
+
+サービスの利用形態がユーザーの属性で異なることがわかれば, 
+商品や記事をユーザー属性に合わせて提示しやすくなる. 
+
+#### 年齢別区分とカテゴリを集計するクエリ
+
+
+```{sql}
+with
+mst_users_with_int_birth_date as (
+    select 
+        *
+        , 20170101 as int_specific_date
+        , cast(replace(substring(birth_date, 1, 10), '-', '') as integer ) as int_birth_date
+    from
+        mst_users
+)
+, mst_users_with_age as (
+    select
+        *
+        , floor((int_specific_date - int_birth_date) / 10000 ) as age
+    from
+        mst_users_with_int_birth_date
+)
+, mst_users_with_category as (
+    select
+        user_id
+        , sex
+        , age
+        , concat(
+            case
+                when 20 <= age then sex
+                else ''
+            end
+            , case
+                when age between 4 and 12 then 'C'
+                when age between 13 and 19 then 'T'
+                when age between 20 and 34 then '1'
+                when age between 35 and 49 then '2'
+                when age >= 50 then '3'
+              end
+        ) as category
+    from
+        mst_users_with_age
+)
+select 
+    p.category as product_category
+    , u.category as user_category
+    , count(*) as pruchase_count
+from
+    action_log as p
+    INNER JOIN
+        mst_users_with_category as u
+    ON 
+        p.user_id = u.user_id
+where
+    action = 'purchase'
+group by
+    p.category, u.category
+order by
+    p.category, u.category
+;
+```
+
+
+## ユーザーの訪問頻度を集計する
+
+ユーザーの属性は静的なものだけでなく, 現時点での訪問頻度など
+オンラインで変更されるものも有効. 
+
+
+#### 週に何日利用しているかを集計するクエリ
+```{sql}
+with
+action_log_with_dt as (
+    select 
+        *
+        , substring(stamp, 1, 10) as dt
+    from
+        action_log
+)
+, action_day_count_per_user as (
+    select
+        user_id
+        , count(distinct dt) as action_day_count
+    from
+        action_log_with_dt
+    where
+        dt between '2016-11-01' and '2016-11-07'
+    group by
+        user_id
+)
+select
+    action_day_count
+    , count(distinct user_id) as user_count
+from
+    action_day_count_per_user
+group by
+    action_day_count
+order by
+    action_day_count
+;
+```
+
+
+
+#### 構成比と構成比累計を計算するクエリ
+```{sql}
+with
+action_log_with_dt as (
+    select 
+        *
+        , substring(stamp, 1, 10) as dt
+    from
+        action_log
+)
+, action_day_count_per_user as (
+    select
+        user_id
+        , count(distinct dt) as action_day_count
+    from
+        action_log_with_dt
+    where
+        dt between '2016-11-01' and '2016-11-07'
+    group by
+        user_id
+)
+select
+    action_day_count
+    , count(distinct user_id) as user_count
+    , 100. * count(distinct user_id) / 
+      sum(count(distinct user_id)) over() as composition_ratio
+    , 100 * 
+      sum(count(distinct user_id))
+      over(order by action_day_count rows between unbounded preceding and current row) /
+      sum(count(distinct user_id)) 
+      over() as cumulative_ratio
+from
+    action_day_count_per_user
+group by
+    action_day_count
+order by
+    action_day_count
+;
+```
+                  
+                  
+                  
+                  
+                  
+
+
+
+
+
 
 
 
